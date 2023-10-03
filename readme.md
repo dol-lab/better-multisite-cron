@@ -1,4 +1,4 @@
-# Better Multisite Cron
+# Better Multisite Cron (WordPress mu-plugin)
 <p align="center">
 	<img align="right" width="300" height="auto" src="./croni-l.png">
 </p>
