@@ -27,9 +27,12 @@ You could have two jobs:
 - both send emails to the site admin_email if things go wrong.
 
 ```bash
-# trigger every 30 mins, run for max 15min(900s).
-*/30 * * * * vagrant cd /srv/www/spaces/current && ( --log_errors_to_file='/srv/www/spaces/logs/better-cron.log' --max_seconds=900 ) > /dev/null 2>&1
-*/30 * * * * vagrant cd /srv/www/spaces/current && ( --overtime_is_error --max-seconds=36000 --log_errors_to_file='/srv/www/spaces/logs/better-cron.log' --max_seconds=900 ) > /dev/null 2>&1
+# your crontab
+
+# trigger every 30 mins, run for max 15min(900s). don't treat overtime as error.
+*/30 * * * * cd /srv/www/current && (wp multisite-cron run --log_errors_to_file='/srv/www/logs/better-cron.log' --max_seconds=900 ) > /dev/null 2>&1
+# trigger every day at midnight, run for 10hrs, treat overtime as error (and send an email).
+0 0 * * * cd /srv/www/current && (wp multisite-cron run --log_errors_to_file='/srv/www/logs/better-cron.log' --max_seconds=36000 --overtime_is_error ) > /dev/null 2>&1
 
 ```
 
