@@ -16,7 +16,7 @@
 		"multisite"
 	],
 	"support": {
-		"issues": "https://github.com/doll-lab/better-multisite-cron/issues"
+		"issues": "https://github.com/dol-lab/better-multisite-cron/issues"
 	},
 	"require": {
 		"php": ">=8.1"
