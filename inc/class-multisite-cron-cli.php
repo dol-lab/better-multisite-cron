@@ -37,7 +37,7 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 		);
 
 		// the the return code is 0, there was no error and stderr is is not an error (but an issue).
-		$error_or_issue            = $run->return_code ? 'error' : 'issue';
+		$error_or_issue            = 0 === $run->return_code ? 'issue' : 'error';
 		$result['response']        = $run->stdout;
 		$result[ $error_or_issue ] = $run->stderr;
 		return $result;
