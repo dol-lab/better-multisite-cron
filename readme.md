@@ -18,6 +18,8 @@ Trigger with ``wp multisite-cron run``.
 - [ ] would run_command (instead of runcommand) also work? faster?
 - [ ] make it usable via backend (instead of wp-cli). add a class-multisite-cron-request
 - [ ] i18n
+- [x] I'm using ``switch_to_blog`` and ``wp_get_ready_cron_jobs`` to check if there are jobs in a blog.
+      Does this include plugins (if the plugin is not active in the root-blog)? - It does.
 
 ## Example
 

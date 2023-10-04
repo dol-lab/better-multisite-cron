@@ -20,7 +20,7 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 		// check for required arguments.
 		$flags = array_filter(
 			array(
-				'skip_all_plugins' => '--skip-plugins',
+				'skip_all_plugins' => '--skip-plugins', // still runs cron-events added by plugins.
 				'skip_all_themes'  => '--skip-themes',
 			),
 			fn( $k ) => false !== $args[ $k ],

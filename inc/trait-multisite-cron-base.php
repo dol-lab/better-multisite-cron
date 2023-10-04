@@ -42,9 +42,9 @@ trait Multisite_Cron_Base {
 			'include_archived'          => false, // run cron for archived blogs?
 			'limit_last_updated_months' => null, // number. limit to blogs, which were updated in the last x months.
 			'limit'                     => null, // limit to x blogs. null = no limit.
-			'log_errors_to_file'        => false, // log errors to a file (absolute path). null = no logging.
+			'log_errors_to_file'        => false, // log errors to a file (absolute path). null = no file-ogging.
 			'log_max_size'              => ( 1 * 1024 * 1024 * 20 ), // 10MB. max size of the log file.
-			'log_success_to_file'       => false, // WIP! log success to a file (absolute path). null = no logging.
+			'log_success_to_file'       => false, // log success to a file (absolute path). null = no file-logging.
 			'max_seconds'               => 0, // don't run cron for the next blog, if it is over time. 0 = no limit.
 			'order_by'                  => 'last_updated DESC, blog_id ASC', // run new blogs first, because they are more important?
 			'overtime_is_error'         => false, // treat it as an error, if max_seconds was not enough to finish all jobs.
@@ -84,15 +84,14 @@ trait Multisite_Cron_Base {
 
 	public function output( $args, $results, $log_timestamp ) : string {
 
-		$err           = '';
-		$all_count     = count( $results['blog_tasks'] );
-		$success_count = $all_count - $results['error_count'];
+		$err             = '';
+		$all_count       = count( $results['blog_tasks'] );
+		$processed_tasks = array_filter( $results['blog_tasks'], fn( $a ) => ! empty( $a['response'] ) );
+		$processed_count = count( $processed_tasks );
 
-		if ( $success_count ) {
-			// tasks with a response are considered successful.
-			$processed_tasks = array_filter( $results['blog_tasks'], fn( $a ) => ! empty( $a['response'] ) );
-			$processed_count = count( $processed_tasks );
-			$processed_ids   = implode( ',', array_map( fn( $a ) => $a['blog_id'], $processed_tasks ) );
+		// tasks with a response are considered successful.
+		if ( $processed_count ) {
+			$processed_ids = implode( ',', array_map( fn( $a ) => $a['blog_id'], $processed_tasks ) );
 			$this->log(
 				'success',
 				"Found $all_count Blogs. " .
@@ -112,7 +111,13 @@ trait Multisite_Cron_Base {
 			$this->log( 'issue', 'Found issues: ' . print_r( $issues, true ) );
 		}
 
-		$this->maybe_log_to_file( $args, $results, $log_timestamp );
+		if ( $results['error_count'] ) {
+			$this->maybe_log_to_file( $args['log_errors_to_file'], $args, $results, $log_timestamp );
+		}
+		if ( $processed_count ) {
+			$this->maybe_log_to_file( $args['log_success_to_file'], $args, $results, $log_timestamp );
+		}
+
 		return $err;
 	}
 
@@ -307,15 +312,13 @@ trait Multisite_Cron_Base {
 		return preg_replace( '/\s+/', ' ', $query );
 	}
 
-	private function maybe_log_to_file( $args, $log_data, $timestamp ) {
+	private function maybe_log_to_file( $log_file, $args, $log_data, $timestamp ) {
 
-		if ( empty( $args['log_errors_to_file'] ) || 0 === $log_data['error_count'] ) {
-			return;
+		if ( empty( $log_file ) ) {
+			return; // nothing to do (false is considered empty too).
 		}
 
-		$log_file = $args['log_errors_to_file'];
-
-		$this->log( 'notice', 'Logging errors to file: ' . $log_file );
+		$this->log( 'notice', 'Logging to file: ' . $log_file );
 
 		// Check if the log file exists, and create it if not.
 		if ( ! file_exists( $log_file ) ) {
