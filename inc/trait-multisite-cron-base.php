@@ -191,6 +191,8 @@ trait Multisite_Cron_Base {
 			throw new Exception( 'Querying all blogs returned empty. Thats odd.', 1 );
 		}
 
+		$this->log( 'notice', 'Found ' . count( $results ) . ' blogs.' );
+
 		$res = array(
 			'args'                 => $args, // arguments used to trigger this command.
 			'query_all_blogs'      => $blog_query, // the query used to retrieve the blogs.
@@ -207,8 +209,7 @@ trait Multisite_Cron_Base {
 				// 'error'   => $is_over_time ? 'over_time' : false,
 				'over_time' => $is_over_time ? 1 : 0,
 			);
-
-			$blog_result = $this->run_cron_for_blog( $blog_result_default, $blog, $args );
+			$blog_result         = $this->run_cron_for_blog( $blog_result_default, $blog, $args );
 
 			if ( ! empty( $blog_result ) ) {
 				$res['blog_tasks'][] = $blog_result;

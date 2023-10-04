@@ -16,7 +16,12 @@ add_action(
 	'cli_init',
 	function() {
 		require_once dirname( __FILE__ ) . '/inc/class-multisite-cron-cli.php';
-		// run with wp multisite-cron run. See class-multisite-cron-base.php->run() for parameters.
+		/**
+		 * See class-multisite-cron-base.php->run() for parameters.
+		 *
+		 * $ wp multisite-cron run --max_seconds=number
+		 * Success: run cron on all blogs, last_updated first.
+		 */
 		\WP_CLI::add_command( 'multisite-cron', __NAMESPACE__ . '\Multisite_Cron_Cli' );
 	}
 );

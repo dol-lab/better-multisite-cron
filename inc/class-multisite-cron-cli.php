@@ -27,8 +27,14 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 			ARRAY_FILTER_USE_KEY
 		);
 
+		// add time limit. each command can not run longer than max_seconds.
+		$flags[] = $args['max_seconds'] ? "--exec='set_time_limit( {$args['max_seconds']} );'" : '';
+
 		$result['cmd'] = "cron event run --url={$result['site_url']} --due-now " . implode( ' ', $flags );
-		$run           = WP_CLI::runcommand(
+
+		$this->log( 'debug', "Running command: {$result['cmd']}" );
+
+		$run = WP_CLI::runcommand(
 			$result['cmd'],
 			array(
 				'return'     => 'all', // setting this true did not work for me...
