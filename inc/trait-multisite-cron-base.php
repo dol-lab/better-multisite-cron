@@ -344,7 +344,7 @@ trait Multisite_Cron_Base {
 		$log_message            = json_encode( array( $timestamp => $log_data ) );
 
 		// Append the log message to the log file.
-		if ( file_put_contents( $log_file, $log_message . "\n\n", FILE_APPEND | LOCK_EX ) === false ) {
+		if ( file_put_contents( $log_file, $log_message . "\n,\n", FILE_APPEND | LOCK_EX ) === false ) {
 			throw new Exception( 'Failed to create log file.', 1 );
 		}
 	}
