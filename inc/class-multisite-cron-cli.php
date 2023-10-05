@@ -32,7 +32,7 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 
 		$result['cmd'] = "cron event run --url={$result['site_url']} --due-now " . implode( ' ', $flags );
 
-		$this->log( 'debug', "Running command: {$result['cmd']}" );
+		$this->log( 'notice', "Running command: {$result['cmd']}" );
 
 		$run = WP_CLI::runcommand(
 			$result['cmd'],
