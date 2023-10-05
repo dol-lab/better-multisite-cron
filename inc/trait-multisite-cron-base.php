@@ -64,6 +64,9 @@ trait Multisite_Cron_Base {
 			if ( ! empty( $invalid_args ) ) {
 				throw new Exception( 'Stopping: Invalid arguments passed to cli command: ' . implode( ', ', $invalid_args ), 1 );
 			}
+			if ( $args['max_seconds'] ) {
+				set_time_limit( round( $args['max_seconds'] * 1.1 + 20 ) );
+			}
 			$results          = $this->trigger_all_blogs( $args );     // Get the current timestamp.
 			$error_messages[] = $this->output( $args, $results, $log_timestamp );
 
