@@ -133,9 +133,11 @@ trait Multisite_Cron_Base {
 			$hash = md5( json_encode( $error ) );
 			if ( ! isset( $grouped[ $hash ] ) ) {
 				$grouped[ $hash ]             = $error;
+				$grouped[ 'count' ] = 1;
 				$grouped[ $hash ]['blog_ids'] = array( $blog_id );
 			} else {
 				$grouped[ $hash ]['blog_ids'][] = $blog_id;
+				$grouped[ 'count' ]++;
 			}
 		}
 		// get rid of the hash.
