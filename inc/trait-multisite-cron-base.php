@@ -64,6 +64,11 @@ trait Multisite_Cron_Base {
 			if ( ! empty( $invalid_args ) ) {
 				throw new Exception( 'Stopping: Invalid arguments passed to cli command: ' . implode( ', ', $invalid_args ), 1 );
 			}
+
+			if ( ! is_numeric( $args['max_seconds'] ) ) {
+				throw new Exception( 'The max_seconds parameter is not numeric.' );
+			}
+
 			if ( $args['max_seconds'] ) {
 				set_time_limit( round( $args['max_seconds'] * 1.1 + 20 ) );
 			}
@@ -133,11 +138,11 @@ trait Multisite_Cron_Base {
 			$hash = md5( json_encode( $error ) );
 			if ( ! isset( $grouped[ $hash ] ) ) {
 				$grouped[ $hash ]             = $error;
-				$grouped[ 'count' ] = 1;
+				$grouped['count']             = 1;
 				$grouped[ $hash ]['blog_ids'] = array( $blog_id );
 			} else {
 				$grouped[ $hash ]['blog_ids'][] = $blog_id;
-				$grouped[ 'count' ]++;
+				$grouped['count']++;
 			}
 		}
 		// get rid of the hash.
