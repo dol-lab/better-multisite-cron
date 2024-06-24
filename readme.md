@@ -11,7 +11,7 @@
 
 ## Todos
 
-Trigger with ``wp multisite-cron run``.
+Trigger with ``wp multisite-cron run`` (via. [WP-CLI](https://wp-cli.org/))
 
 - [ ] create a log-table?
 - [ ] add some testing...
