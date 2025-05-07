@@ -42,7 +42,7 @@ You could have two jobs:
 ## Options
 ```php
 # lazy copy from code:
-'always_add_root_blog'      => true, // always add the root blog (first) to the list of blogs to run cron for.
+'always_add_blog_ids'      => '1', // comma-separated list of blog IDs to always include.
 'debug'                     => false, // more verbose output.
 'email_to'                  => get_network_option( get_current_network_id(), 'admin_email' ),
 'include_archived'          => false, // run cron for archived blogs?

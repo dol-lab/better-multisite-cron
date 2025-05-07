@@ -36,7 +36,7 @@ trait Multisite_Cron_Base {
 	public function run( $args, $assoc_args ) {
 
 		$defaults = array(
-			'always_add_root_blog'      => true, // always add the root blog (first) to the list of blogs to run cron for.
+			'always_add_blog_ids'       => '1', // comma-separated list of blog IDs to always include.
 			'debug'                     => false, // more verbose output.
 			'email_to'                  => get_network_option( get_current_network_id(), 'admin_email' ),
 			'include_archived'          => false, // run cron for archived blogs?
@@ -303,9 +303,22 @@ trait Multisite_Cron_Base {
 
 		$oder_by = $this->sanitize_order_wp_blogs( $args['order_by'] );
 
-		if ( $args['always_add_root_blog'] ) {
-			$wheres[] = 'OR blog_id=1';
-			$oder_by  = 'CASE blog_id WHEN 1 THEN 1 ELSE 0 END DESC,' . $oder_by;
+		if ( ! empty( $args['always_add_blog_ids'] ) ) {
+			$blog_ids_to_add = array_map( 'intval', explode( ',', $args['always_add_blog_ids'] ) );
+			if ( ! empty( $blog_ids_to_add ) ) {
+				$blog_ids_sql = implode( ',', $blog_ids_to_add );
+				$wheres[]     = "OR blog_id IN ($blog_ids_sql)";
+				// Adjust order_by to prioritize these blogs
+				$case_statements = array();
+				foreach ( $blog_ids_to_add as $index => $blog_id ) {
+					// Higher priority for earlier IDs in the list, ensuring they come first.
+					// The CASE statement will assign a higher number to items appearing earlier in the list.
+					// DESC order means higher numbers come first.
+					$case_statements[] = "WHEN {$blog_id} THEN " . ( count( $blog_ids_to_add ) - $index );
+				}
+				// Blogs not in the list get a lower priority (0 in this case).
+				$oder_by = 'CASE blog_id ' . implode( ' ', $case_statements ) . ' ELSE 0 END DESC, ' . $oder_by;
+			}
 		}
 
 		$where = implode( "\n", array_filter( $wheres ) );
