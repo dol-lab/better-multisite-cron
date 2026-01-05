@@ -3,7 +3,7 @@ namespace Better_Multisite_Cron;
 
 use WP_CLI;
 
-require_once dirname( __FILE__ ) . '/trait-multisite-cron-base.php';
+require_once __DIR__ . '/trait-multisite-cron-base.php';
 
 class Multisite_Cron_Cli extends \WP_CLI_Command {
 
@@ -15,7 +15,7 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 	 * @param string $url
 	 * @return array [ 'response' => string, 'error' => string', 'issue' => string, 'cmd' => string' ]
 	 */
-	public function run_cron_for_url_now( $result, $args ) : array {
+	public function run_cron_for_url_now( $result, $args ): array {
 
 		// check for required arguments.
 		$flags = array_filter(
@@ -51,11 +51,11 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 
 	public function log( string $type, string $string ) {
 		$types = array(
-			'issue'   => fn( $s) => WP_CLI::warning( $s ),
-			'notice'  => fn( $s) => WP_CLI::log( $s ),
-			'error'   => fn( $s) => WP_CLI::error( $s, false ),
-			'success' => fn( $s) => WP_CLI::success( $s ),
-			'debug'   => fn( $s) => WP_CLI::debug( $s ),
+			'issue'   => fn( $s ) => WP_CLI::warning( $s ),
+			'notice'  => fn( $s ) => WP_CLI::log( $s ),
+			'error'   => fn( $s ) => WP_CLI::error( $s, false ),
+			'success' => fn( $s ) => WP_CLI::success( $s ),
+			'debug'   => fn( $s ) => WP_CLI::debug( $s ),
 			// 'warning' => fn($s) => WP_CLI::warning( $s ),
 		);
 		if ( ! isset( $types[ $type ] ) ) {

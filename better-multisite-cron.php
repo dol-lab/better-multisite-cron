@@ -14,8 +14,8 @@ namespace Better_Multisite_Cron;
 
 add_action(
 	'cli_init',
-	function() {
-		require_once dirname( __FILE__ ) . '/inc/class-multisite-cron-cli.php';
+	function () {
+		require_once __DIR__ . '/inc/class-multisite-cron-cli.php';
 		/**
 		 * See class-multisite-cron-base.php->run() for parameters.
 		 *

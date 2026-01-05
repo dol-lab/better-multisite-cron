@@ -1,7 +1,7 @@
 <?php
 namespace Better_Multisite_Cron;
 
-use \WP_CLI;
+use WP_CLI;
 use Exception;
 
 trait Multisite_Cron_Base {
@@ -14,7 +14,7 @@ trait Multisite_Cron_Base {
 	 * @param array $args
 	 * @return array
 	 */
-	public function run_cron_for_url_now( array $result, $args ) : array {
+	public function run_cron_for_url_now( array $result, $args ): array {
 		$result['cmd']   = 'no command';
 		$result['error'] = "No provider vor {$result['site_url']}, extend the class and implement " . __FUNCTION__;
 		return $result;
@@ -90,7 +90,7 @@ trait Multisite_Cron_Base {
 		// $this->log( 'notice', 'Finished in ' . $results['duration_all_seconds'] . ' seconds.' );
 	}
 
-	public function output( $args, $results, $log_timestamp ) : string {
+	public function output( $args, $results, $log_timestamp ): string {
 
 		$err             = '';
 		$all_count       = count( $results['blog_tasks'] );
@@ -142,12 +142,11 @@ trait Multisite_Cron_Base {
 				$grouped[ $hash ]['blog_ids'] = array( $blog_id );
 			} else {
 				$grouped[ $hash ]['blog_ids'][] = $blog_id;
-				$grouped['count']++;
+				++$grouped['count'];
 			}
 		}
 		// get rid of the hash.
 		return array_values( $grouped );
-
 	}
 
 	private function maybe_send_email( array $args, array $error_messages, string $log_timestamp ) {
@@ -174,7 +173,6 @@ trait Multisite_Cron_Base {
 			implode( "\n", $error_messages )
 			. "\n\n" . print_r( $args, true ) . "\n\n" . $maybe_check_log
 		);
-
 	}
 
 	private function trigger_all_blogs( $args ) {
@@ -274,7 +272,6 @@ trait Multisite_Cron_Base {
 
 		$this->log( 'notice', "Blog {$result['blog_id']} ({$result['site_url']}) finished in {$result['duration_blog_seconds']} seconds." );
 		return $result;
-
 	}
 
 	private function maybe_add_overtime_error( $result, $args ) {
