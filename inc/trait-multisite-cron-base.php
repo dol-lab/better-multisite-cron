@@ -235,8 +235,10 @@ trait Multisite_Cron_Base {
 		}
 
 		$start_blog = microtime( true );
+		$this->log( 'debug', "Memory usage before blog {$result['blog_id']}: " . round( memory_get_usage() / 1024 / 1024, 2 ) . ' MB' );
 
 		switch_to_blog( $result['blog_id'] );
+
 		wp_suspend_cache_addition( true );
 
 		$jobs                = wp_get_ready_cron_jobs();
@@ -267,7 +269,7 @@ trait Multisite_Cron_Base {
 
 		wp_suspend_cache_addition( false );
 		restore_current_blog();
-
+		wp_cache_flush(); // clear the in-memory cache to prevent growth.
 		$result['duration_blog_seconds'] = $this->round_seconds( microtime( true ) - $start_blog );
 
 		$this->log( 'notice', "Blog {$result['blog_id']} ({$result['site_url']}) finished in {$result['duration_blog_seconds']} seconds." );

@@ -37,11 +37,11 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 		$run = WP_CLI::runcommand(
 			$result['cmd'],
 			array(
-				'return'     => 'all', // setting this true did not work for me...
+				'return'     => 'all',
 				'exit_error' => false,
+				'launch'     => true,
 			)
 		);
-
 		// the the return code is 0, there was no error and stderr is is not an error (but an issue).
 		$error_or_issue            = 0 === $run->return_code ? 'issue' : 'error';
 		$result['response']        = $run->stdout;
