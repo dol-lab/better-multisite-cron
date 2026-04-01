@@ -1,7 +1,6 @@
 <?php
 namespace Better_Multisite_Cron;
 
-use WP_CLI;
 use Exception;
 
 trait Multisite_Cron_Base {
@@ -33,7 +32,7 @@ trait Multisite_Cron_Base {
 	/**
 	 * wp multisite-cron run
 	 */
-	public function run( $args, $assoc_args ) {
+	public function run( $positional_args, $assoc_args ) {
 
 		$defaults = array(
 			'always_add_blog_ids'       => '1', // comma-separated list of blog IDs to always include.
@@ -42,41 +41,50 @@ trait Multisite_Cron_Base {
 			'include_archived'          => false, // run cron for archived blogs?
 			'limit_last_updated_months' => null, // number. limit to blogs, which were updated in the last x months.
 			'limit'                     => null, // limit to x blogs. null = no limit.
-			'log_errors_to_file'        => false, // log errors to a file (absolute path). null = no file-ogging.
-			'log_max_size'              => ( 1 * 1024 * 1024 * 20 ), // 10MB. max size of the log file.
-			'log_success_to_file'       => false, // log success to a file (absolute path). null = no file-logging.
+			'log_errors_to_file'        => false, // log errors to a file (absolute path). false = no file-logging.
+			'log_max_size'              => ( 1 * 1024 * 1024 * 20 ), // 20MB. max size of the log file.
+			'log_success_to_file'       => false, // log success to a file (absolute path). false = no file-logging.
+			'log_verbose'               => false, // include args, query and per-blog cmd/response in log files.
 			'max_seconds'               => 0, // don't run cron for the next blog, if it is over time. 0 = no limit.
 			'order_by'                  => 'last_updated DESC, blog_id ASC', // run new blogs first, because they are more important?
 			'overtime_is_error'         => false, // treat it as an error, if max_seconds was not enough to finish all jobs.
 			'send_error_email'          => true, // send an email, if an error occurred?
 			'skip_all_plugins'          => false, // CLI only. careful: --skip-plugins (<-no underscore but - in the middle) does something else...
 			'skip_all_themes'           => false, // CLI only.
-			'sleep_between'             => 0.02, // sleep x seconds between each blog.
 		);
 
 		$error_messages = array();
 		$log_timestamp  = wp_date( 'Y-m-d H:i:s' );
+		$config         = wp_parse_args( $assoc_args, $defaults );
 
 		try {
 
-			$args         = wp_parse_args( $assoc_args, $defaults ); // overwrite args...
 			$invalid_args = array_diff( array_keys( $assoc_args ), array_keys( $defaults ) );
 			if ( ! empty( $invalid_args ) ) {
 				throw new Exception( 'Stopping: Invalid arguments passed to cli command: ' . implode( ', ', $invalid_args ), 1 );
 			}
 
-			if ( ! is_numeric( $args['max_seconds'] ) ) {
+			if ( ! is_numeric( $config['max_seconds'] ) ) {
 				throw new Exception( 'The max_seconds parameter is not numeric.' );
 			}
 
-			if ( $args['max_seconds'] ) {
-				set_time_limit( round( $args['max_seconds'] * 1.1 + 20 ) );
+			if ( $config['max_seconds'] ) {
+				set_time_limit( round( $config['max_seconds'] * 1.1 + 20 ) );
 			}
-			$results          = $this->trigger_all_blogs( $args );     // Get the current timestamp.
-			$error_messages[] = $this->output( $args, $results, $log_timestamp );
+			$results          = $this->trigger_all_blogs( $config );
+			$error_messages[] = $this->output( $config, $results );
+
+			// File logging (after output, so CLI errors are visible even if file-logging fails).
+			if ( $results['error_count'] ) {
+				$this->maybe_log_to_file( $config['log_errors_to_file'], $config, $results, $log_timestamp );
+			}
+			$processed_count = count( array_filter( $results['blog_tasks'], fn( $a ) => ! empty( $a['response'] ) ) );
+			if ( $processed_count ) {
+				$this->maybe_log_to_file( $config['log_success_to_file'], $config, $results, $log_timestamp );
+			}
 
 		} catch ( \Throwable $th ) {
-			$msg              = $args['debug'] ? $th : $th->getMessage();
+			$msg              = $config['debug'] ? $th : $th->getMessage();
 			$error_messages[] = print_r( $msg, true );
 		}
 
@@ -84,20 +92,24 @@ trait Multisite_Cron_Base {
 			$this->log( 'error', implode( "\n", $error_messages ) );
 		}
 
-		// outside the catch blog and after file-logging, so you have a chance to see if something went wrong logging.
-		$this->maybe_send_email( $args, array_filter( $error_messages ), $log_timestamp );
-
-		// $this->log( 'notice', 'Finished in ' . $results['duration_all_seconds'] . ' seconds.' );
+		// Outside the catch block and after file-logging, so you have a chance to see if something went wrong logging.
+		$this->maybe_send_email( $config, array_filter( $error_messages ), $log_timestamp );
 	}
 
-	public function output( $args, $results, $log_timestamp ): string {
+	/**
+	 * Log results to CLI output.
+	 *
+	 * @param array  $config  Parsed arguments.
+	 * @param array  $results Results from trigger_all_blogs().
+	 * @return string Error message (empty string if no errors).
+	 */
+	public function output( $config, $results ): string {
 
 		$err             = '';
 		$all_count       = count( $results['blog_tasks'] );
 		$processed_tasks = array_filter( $results['blog_tasks'], fn( $a ) => ! empty( $a['response'] ) );
 		$processed_count = count( $processed_tasks );
 
-		// tasks with a response are considered successful.
 		if ( $processed_count ) {
 			$processed_ids = implode( ',', array_map( fn( $a ) => $a['blog_id'], $processed_tasks ) );
 			$this->log(
@@ -109,43 +121,43 @@ trait Multisite_Cron_Base {
 		}
 
 		if ( $results['error_count'] ) {
-			$errors  = array_filter( $results['blog_tasks'], fn( $a ) => $a['error'] ?? false );
-			$err_msg = "{$results['error_count']} job(s) failed (or was/were skipped). "
-				. print_r( $this->group_blog_tasks_by_blog_id( $errors ), true );
-			$err     = $err_msg;
+			$errors = array_filter( $results['blog_tasks'], fn( $a ) => $a['error'] ?? false );
+			$err    = "{$results['error_count']} job(s) failed (or was/were skipped). "
+				. print_r( $this->group_blog_tasks( $errors, true ), true );
 		}
+
 		$issues = array_filter( $results['blog_tasks'], fn( $a ) => $a['issue'] ?? false );
 		if ( count( $issues ) ) {
 			$this->log( 'issue', 'Found issues: ' . print_r( $issues, true ) );
 		}
 
-		if ( $results['error_count'] ) {
-			$this->maybe_log_to_file( $args['log_errors_to_file'], $args, $results, $log_timestamp );
-		}
-		if ( $processed_count ) {
-			$this->maybe_log_to_file( $args['log_success_to_file'], $args, $results, $log_timestamp );
-		}
-
 		return $err;
 	}
 
-	private function group_blog_tasks_by_blog_id( $errors ) {
-		// group errors where all keys and values (but blog_id) are similar.
-		$grouped = array();
-		foreach ( $errors as $error ) {
-			$blog_id = $error['blog_id'];
-			unset( $error['blog_id'] );
-			$hash = md5( json_encode( $error ) );
+	private function group_blog_tasks( array $tasks, bool $verbose = false ): array {
+		$verbose_keys = array( 'cmd', 'response', 'site_url', 'issue' );
+		$grouped      = array();
+
+		foreach ( $tasks as $task ) {
+			$blog_id = $task['blog_id'];
+			unset( $task['blog_id'] );
+
+			// In compact mode, strip per-blog detail so more entries hash-match.
+			if ( ! $verbose ) {
+				foreach ( $verbose_keys as $key ) {
+					unset( $task[ $key ] );
+				}
+			}
+
+			$hash = md5( json_encode( $task ) );
 			if ( ! isset( $grouped[ $hash ] ) ) {
-				$grouped[ $hash ]             = $error;
-				$grouped['count']             = 1;
+				$grouped[ $hash ]             = $task;
 				$grouped[ $hash ]['blog_ids'] = array( $blog_id );
 			} else {
 				$grouped[ $hash ]['blog_ids'][] = $blog_id;
-				++$grouped['count'];
 			}
 		}
-		// get rid of the hash.
+
 		return array_values( $grouped );
 	}
 
@@ -238,41 +250,34 @@ trait Multisite_Cron_Base {
 		$this->log( 'debug', "Memory usage before blog {$result['blog_id']}: " . round( memory_get_usage() / 1024 / 1024, 2 ) . ' MB' );
 
 		switch_to_blog( $result['blog_id'] );
-
 		wp_suspend_cache_addition( true );
 
 		$jobs                = wp_get_ready_cron_jobs();
 		$result['job_names'] = $this->get_names_from_jobs( $jobs );
-		if ( empty( $result['job_names'] ) ) {
-			return $result;
-		}
-		$result['site_url'] = get_site_url( $result['blog_id'] );
 
-		// add over_time error, if there is no other error and the blog is over time.
-		$result = $this->maybe_add_overtime_error( $result, $args );
+		if ( ! empty( $result['job_names'] ) ) {
+			$result['site_url'] = get_site_url( $result['blog_id'] );
+			$result             = $this->maybe_add_overtime_error( $result, $args );
 
-		/**
-		 * This filter allows you to prevent/enable the cron-job for a specific blog.
-		 * Enable: Make sure to check filter 'better_multisite_cron_early_exit_over_time' to this filter is reached.
-		 */
-		$result = apply_filters( 'better_multisite_cron_before_run', $result, $args, $blog );
-		// We exit, on over time or if there is an error.
-		if ( ! empty( $result['error'] ) || $result['over_time'] ) {
-			return $result;
-		}
+			/**
+			 * This filter allows you to prevent/enable the cron-job for a specific blog.
+			 * Enable: Make sure to check filter 'better_multisite_cron_early_exit_over_time' so this filter is reached.
+			 */
+			$result = apply_filters( 'better_multisite_cron_before_run', $result, $args, $blog );
 
-		$result = $this->run_cron_for_url_now( $result, $args );
-
-		if ( $args['sleep_between'] > 0 ) {
-			usleep( intval( $args['sleep_between'] ) );
+			if ( empty( $result['error'] ) && ! $result['over_time'] ) {
+				$result = $this->run_cron_for_url_now( $result, $args );
+			}
 		}
 
 		wp_suspend_cache_addition( false );
 		restore_current_blog();
-		wp_cache_flush(); // clear the in-memory cache to prevent growth.
+		wp_cache_flush();
 		$result['duration_blog_seconds'] = $this->round_seconds( microtime( true ) - $start_blog );
 
-		$this->log( 'notice', "Blog {$result['blog_id']} ({$result['site_url']}) finished in {$result['duration_blog_seconds']} seconds." );
+		if ( ! empty( $result['site_url'] ) ) {
+			$this->log( 'notice', "Blog {$result['blog_id']} ({$result['site_url']}) finished in {$result['duration_blog_seconds']} seconds." );
+		}
 		return $result;
 	}
 
@@ -346,7 +351,7 @@ trait Multisite_Cron_Base {
 		// Check if the log file exists, and create it if not.
 		if ( ! file_exists( $log_file ) ) {
 			$file = fopen( $log_file, 'w' );
-			if ( $file === false ) {
+			if ( false === $file ) {
 				throw new Exception( "Failed to create log file '$log_file'.", 1 );
 			}
 			fclose( $file );
@@ -356,12 +361,19 @@ trait Multisite_Cron_Base {
 			throw new Exception( "Log file [$abs_path] is too big.", 1 );
 		}
 
-		// Prepare the log message.
-		$log_data['blog_tasks'] = $this->group_blog_tasks_by_blog_id( $log_data['blog_tasks'] );
-		$log_message            = json_encode( array( $timestamp => $log_data ) );
+		$verbose = ! empty( $args['log_verbose'] );
 
-		// Append the log message to the log file.
-		if ( file_put_contents( $log_file, $log_message . "\n,\n", FILE_APPEND | LOCK_EX ) === false ) {
+		// In compact mode, drop args and query (they rarely change between runs).
+		if ( ! $verbose ) {
+			unset( $log_data['args'] );
+			unset( $log_data['query_all_blogs'] );
+		}
+
+		$log_data['blog_tasks'] = $this->group_blog_tasks( $log_data['blog_tasks'], $verbose );
+		$log_message            = wp_json_encode( array( $timestamp => $log_data ) );
+
+		// Append as JSON Lines (one JSON object per line, parseable with jq).
+		if ( file_put_contents( $log_file, $log_message . "\n", FILE_APPEND | LOCK_EX ) === false ) {
 			throw new Exception( 'Failed to create log file.', 1 );
 		}
 	}
@@ -370,7 +382,7 @@ trait Multisite_Cron_Base {
 	 *
 	 * @param string $order_by table_name.column_name [ASC|DESC], table_name.column_name [ASC|DESC], ...
 	 * @return string the original order_by string, if it is valid.
-	 * @throws \Exception if invalid.
+	 * @throws \Exception If invalid.
 	 */
 	private function sanitize_order_wp_blogs( string $order_by ) {
 		$whitelist = array( 'asc', 'desc', 'blog_id', 'site_id', 'domain', 'path', 'registered', 'last_updated', 'public', 'archived', 'mature', 'spam', 'deleted', 'lang_id' );
@@ -378,11 +390,15 @@ trait Multisite_Cron_Base {
 		$chunks    = array_map( fn( $a ) => strtolower( trim( $a ) ), $chunks );
 		$remaining = array_diff( $chunks, $whitelist );
 		if ( ! empty( $remaining ) ) {
-			throw new Exception( 'Invalid order_by part(s): ' . implode( ', ', $remaining ), 1 );
+			throw new Exception( 'Invalid order_by part(s): ' . esc_html( implode( ', ', $remaining ) ), 1 );
 		}
 		return $order_by;
 	}
 
+	/**
+	 * @param float $microtime Microtime value.
+	 * @return float Rounded to 2 decimal places.
+	 */
 	private function round_seconds( $microtime ) {
 		return round( $microtime * 100 ) / 100;
 	}
