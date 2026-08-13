@@ -3,17 +3,26 @@ namespace Better_Multisite_Cron;
 
 use Exception;
 
+require_once __DIR__ . '/class-run-log.php';
+
 trait Multisite_Cron_Base {
+
+	/** @var array The record of the current run, see Run_Log. */
+	private $run = array();
+
+	/** @var string|null Freed by catch_fatal(), so an out-of-memory death can still be reported. */
+	private $memory_reserve = null;
 
 	/**
 	 *
 	 * Overwrite the function in your class!
+	 * (Everything but run() and status() is protected, so WP-CLI does not turn it into a subcommand.)
 	 *
 	 * @param array $result
 	 * @param array $args
 	 * @return array
 	 */
-	public function run_cron_for_url_now( array $result, $args ): array {
+	protected function run_cron_for_url_now( array $result, $args ): array {
 		$result['cmd']   = 'no command';
 		$result['error'] = "No provider vor {$result['site_url']}, extend the class and implement " . __FUNCTION__;
 		return $result;
@@ -25,9 +34,19 @@ trait Multisite_Cron_Base {
 	 * @param string $string
 	 * @return void
 	 */
-	public function log( string $type, string $string ) {
+	protected function log( string $type, string $string ) {
 		error_log( "BMSC: $type, $string" );
 	}
+
+	/**
+	 * Called at the very end of run(). Overwrite it to signal failure to the outside world
+	 * (the CLI class halts with exit-code 1, so cron/systemd/monitoring can see it).
+	 *
+	 * @param bool  $has_errors Did this run produce any error?
+	 * @param array $config     The parsed arguments.
+	 * @return void
+	 */
+	protected function after_run( bool $has_errors, array $config ) {}
 
 	/**
 	 * wp multisite-cron run
@@ -37,25 +56,39 @@ trait Multisite_Cron_Base {
 		$defaults = array(
 			'always_add_blog_ids'       => '1', // comma-separated list of blog IDs to always include.
 			'debug'                     => false, // more verbose output.
-			'email_to'                  => get_network_option( get_current_network_id(), 'admin_email' ),
+			'email_to'                  => get_network_option( get_current_network_id(), 'admin_email', '' ), // who hears about a failed run.
+			'exit_on_error'             => true, // CLI only. exit with code 1 if anything went wrong.
 			'include_archived'          => false, // run cron for archived blogs?
 			'limit_last_updated_months' => null, // number. limit to blogs, which were updated in the last x months.
 			'limit'                     => null, // limit to x blogs. null = no limit.
-			'log_errors_to_file'        => false, // log errors to a file (absolute path). false = no file-logging.
+			'log_errors_to_file'        => '', // log errors to a file (absolute path). empty = no file-logging.
 			'log_max_size'              => ( 1 * 1024 * 1024 * 20 ), // 20MB. max size of the log file.
-			'log_success_to_file'       => false, // log success to a file (absolute path). false = no file-logging.
+			'log_success_to_file'       => '', // log success to a file (absolute path). empty = no file-logging.
 			'log_verbose'               => false, // include args, query and per-blog cmd/response in log files.
 			'max_seconds'               => 0, // don't run cron for the next blog, if it is over time. 0 = no limit.
+			'name'                      => 'default', // name of this run. give each cron-entry its own, see: wp multisite-cron status.
 			'order_by'                  => 'last_updated DESC, blog_id ASC', // run new blogs first, because they are more important?
 			'overtime_is_error'         => false, // treat it as an error, if max_seconds was not enough to finish all jobs.
-			'send_error_email'          => true, // send an email, if an error occurred?
+			'send_error_email'          => true, // mail email_to, if the run went wrong?
 			'skip_all_plugins'          => false, // CLI only. careful: --skip-plugins (<-no underscore but - in the middle) does something else...
 			'skip_all_themes'           => false, // CLI only.
 		);
 
 		$error_messages = array();
+		$results        = array();
 		$log_timestamp  = wp_date( 'Y-m-d H:i:s' );
 		$config         = wp_parse_args( $assoc_args, $defaults );
+
+		// --no-foo arrives as false, but --foo=false arrives as the string 'false'. Every argument
+		// with a boolean default is a switch, so make both of them mean the same thing.
+		foreach ( $defaults as $key => $default ) {
+			if ( is_bool( $default ) ) {
+				$config[ $key ] = filter_var( $config[ $key ], FILTER_VALIDATE_BOOLEAN );
+			}
+		}
+
+		// Before the try: a crash from here on has to leave an unfinished record behind.
+		$this->start_run( $config['name'] );
 
 		try {
 
@@ -78,8 +111,7 @@ trait Multisite_Cron_Base {
 			if ( $results['error_count'] ) {
 				$this->maybe_log_to_file( $config['log_errors_to_file'], $config, $results, $log_timestamp );
 			}
-			$processed_count = count( array_filter( $results['blog_tasks'], fn( $a ) => ! empty( $a['response'] ) ) );
-			if ( $processed_count ) {
+			if ( $this->count_processed( $results['blog_tasks'] ) ) {
 				$this->maybe_log_to_file( $config['log_success_to_file'], $config, $results, $log_timestamp );
 			}
 
@@ -88,12 +120,95 @@ trait Multisite_Cron_Base {
 			$error_messages[] = print_r( $msg, true );
 		}
 
-		if ( ! empty( array_filter( $error_messages ) ) ) {
+		$error_messages = array_filter( $error_messages );
+		$has_errors     = ! empty( $error_messages );
+
+		if ( $has_errors ) {
 			$this->log( 'error', implode( "\n", $error_messages ) );
 		}
 
-		// Outside the catch block and after file-logging, so you have a chance to see if something went wrong logging.
-		$this->maybe_send_email( $config, array_filter( $error_messages ), $log_timestamp );
+		$this->finish_run( $results, implode( "\n", $error_messages ) );
+
+		/**
+		 * Fires once per run, after the record was written. Report a run wherever you want it: a
+		 * logger, a monitoring ping, a chat message. The error mail (see Error_Mail) is one of these
+		 * listeners, not a step of the run.
+		 *
+		 * @param array $run    The finished record, see Run_Log::start().
+		 * @param array $config The parsed arguments.
+		 */
+		do_action( 'better_multisite_cron_finished', $this->run, $config );
+
+		$this->after_run( $has_errors, $config ); // may exit.
+	}
+
+	/**
+	 * Remember that a run started. Without this, "no errors were logged" and "nothing ever ran"
+	 * look exactly the same from the outside.
+	 *
+	 * @param string $name Name of this run.
+	 * @return void
+	 */
+	private function start_run( string $name ) {
+		$this->memory_reserve = str_repeat( ' ', 256 * 1024 );
+		register_shutdown_function( fn() => $this->catch_fatal() ); // a closure keeps catch_fatal private.
+
+		$this->run = Run_Log::start( $name );
+	}
+
+	/**
+	 * @param array  $results       Results from trigger_all_blogs() (empty if it threw).
+	 * @param string $error_message All errors of this run, joined.
+	 * @return void
+	 */
+	private function finish_run( array $results, string $error_message ) {
+		$tasks = $results['blog_tasks'] ?? array();
+
+		$this->run = Run_Log::save(
+			array_merge(
+				$this->run,
+				array(
+					'finished'         => time(),
+					'duration_seconds' => $results['duration_all_seconds'] ?? 0,
+					'blogs_found'      => count( $tasks ),
+					'blogs_processed'  => $this->count_processed( $tasks ),
+					'error_count'      => $results['error_count'] ?? 0,
+					'error'            => $error_message,
+				)
+			)
+		);
+	}
+
+	/**
+	 * Runs on shutdown. A fatal or an out-of-memory kill never reaches the catch-block in run(),
+	 * so this is the only place where such a death can still be written down.
+	 *
+	 * @return void
+	 */
+	private function catch_fatal() {
+		$this->memory_reserve = null; // free some memory, in case we ran out of it.
+
+		if ( empty( $this->run ) || ! empty( $this->run['finished'] ) ) {
+			return; // run() got to the end, nothing to report here.
+		}
+
+		$last  = error_get_last();
+		$fatal = array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR );
+
+		$this->run['error'] = ( $last && in_array( $last['type'], $fatal, true ) )
+			? "Fatal: {$last['message']} in {$last['file']}:{$last['line']}"
+			: 'The process died before finishing (no PHP error recorded: killed, timed out or out of memory).';
+
+		$this->run = Run_Log::save( $this->run );
+		$this->log( 'error', $this->run['error'] );
+	}
+
+	/**
+	 * @param array $tasks Blog tasks from trigger_all_blogs().
+	 * @return int Blogs which actually ran something (everything else had no due job).
+	 */
+	private function count_processed( array $tasks ): int {
+		return count( array_filter( $tasks, fn( $task ) => ! empty( $task['response'] ) ) );
 	}
 
 	/**
@@ -103,7 +218,7 @@ trait Multisite_Cron_Base {
 	 * @param array  $results Results from trigger_all_blogs().
 	 * @return string Error message (empty string if no errors).
 	 */
-	public function output( $config, $results ): string {
+	protected function output( $config, $results ): string {
 
 		$err             = '';
 		$all_count       = count( $results['blog_tasks'] );
@@ -159,32 +274,6 @@ trait Multisite_Cron_Base {
 		}
 
 		return array_values( $grouped );
-	}
-
-	private function maybe_send_email( array $args, array $error_messages, string $log_timestamp ) {
-		if ( ! $args['send_error_email'] ) {
-			return;
-		}
-
-		// validate email.
-		if ( ! is_email( $args['email_to'] ) ) {
-			$this->log( 'error', "Invalid email '{$args['email_to']}'." );
-			return;
-		}
-
-		if ( empty( $error_messages ) ) {
-			return;
-		}
-
-		$this->log( 'notice', "Sending error email to '{$args['email_to']}'." );
-		$timezone        = wp_timezone_string();
-		$maybe_check_log = $args['log_errors_to_file'] ? "Check log file '{$args['log_errors_to_file']}' with timestamp '$log_timestamp' $timezone." : '';
-		wp_mail(
-			$args['email_to'],
-			'WP CLI Multisite Cron Errors.',
-			implode( "\n", $error_messages )
-			. "\n\n" . print_r( $args, true ) . "\n\n" . $maybe_check_log
-		);
 	}
 
 	private function trigger_all_blogs( $args ) {
