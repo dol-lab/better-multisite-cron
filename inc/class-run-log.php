@@ -194,6 +194,9 @@ class Run_Log {
 	 * permission over the process; posix_kill() reports a live process it may not touch as EPERM,
 	 * which is a yes, not a no. Getting this wrong reports every running cron as killed.
 	 *
+	 * Where open_basedir does not cover /proc, looking is an E_WARNING on every page load, and the
+	 * answer is "no" anyway — so ask quietly and take the posix_kill() route.
+	 *
 	 * @param array $run One record.
 	 * @return bool
 	 */
@@ -203,7 +206,7 @@ class Run_Log {
 		}
 		$pid = (int) $run['pid'];
 
-		if ( is_dir( '/proc' ) ) {
+		if ( @is_dir( '/proc' ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- see above.
 			return file_exists( "/proc/$pid" );
 		}
 		if ( ! function_exists( 'posix_kill' ) ) {
