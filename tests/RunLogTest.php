@@ -169,13 +169,13 @@ final class RunLogTest extends TestCase {
 	public function test_the_summary_quotes_nothing(): void {
 		$run = array(
 			'finished' => time(),
-			'error'    => 'Fatal: no user erika.musterfrau@example.org in /secret-space/',
+			'error'    => 'Fatal: no user erika.musterfrau@example.org in /secret-blog/',
 		);
 
 		$this->assertSame( 'The run stopped with an error.', Run_Log::summary( $run ) );
 	}
 
-	public function test_the_summary_counts_the_Spaces_that_failed(): void {
+	public function test_the_summary_counts_the_blogs_that_failed(): void {
 		$run = array(
 			'finished'    => time(),
 			'error'       => 'Something about 97 blogs, in detail.',
@@ -183,7 +183,7 @@ final class RunLogTest extends TestCase {
 			'blogs_found' => 200,
 		);
 
-		$this->assertSame( 'Jobs failed or were skipped in 97 of 200 Spaces.', Run_Log::summary( $run ) );
+		$this->assertSame( 'Jobs failed or were skipped in 97 of 200 blogs.', Run_Log::summary( $run ) );
 	}
 
 	public function test_a_death_is_summarised_as_a_death(): void {

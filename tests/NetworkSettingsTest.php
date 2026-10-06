@@ -42,7 +42,7 @@ final class NetworkSettingsTest extends TestCase {
 			)
 		);
 
-		$this->assertStringContainsString( '✔ Success, jobs in 12 of 3867 Spaces', $this->render() );
+		$this->assertStringContainsString( '✔ Success, jobs in 12 of 3867 blogs', $this->render() );
 	}
 
 	public function test_a_failed_last_run_says_what_broke(): void {

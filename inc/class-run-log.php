@@ -174,7 +174,7 @@ class Run_Log {
 		}
 		if ( ! empty( $run['error_count'] ) ) {
 			return sprintf(
-				'Jobs failed or were skipped in %d of %d Spaces.',
+				'Jobs failed or were skipped in %d of %d blogs.',
 				(int) $run['error_count'],
 				(int) ( $run['blogs_found'] ?? 0 )
 			);

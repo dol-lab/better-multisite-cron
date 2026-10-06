@@ -3,7 +3,7 @@
  * Plugin Name:  Better Multisite Cron
  * Plugin URI:   https://github.com/dol-lab/better-multisite-cron
  * Description:  Cron Runner for large multisite installs. Requires WP-CLI.
- * Version:      0.2
+ * Version:      0.3
  * Author:       dol-lab (Vitus Schuhwerk)
  * Author URI:   https://github.com/dol-lab
  * Text Domain:  bmsc

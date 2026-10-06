@@ -144,8 +144,8 @@ class Network_Settings {
 		}
 		return '<span style="color:#008a20">✔ ' . esc_html(
 			sprintf(
-				/* translators: 1: Spaces which ran a job, 2: Spaces looked at. */
-				__( 'Success, jobs in %1$d of %2$d Spaces', 'bmsc' ),
+				/* translators: 1: blogs which ran a job, 2: blogs looked at. */
+				__( 'Success, jobs in %1$d of %2$d blogs', 'bmsc' ),
 				(int) ( $run['blogs_processed'] ?? 0 ),
 				(int) ( $run['blogs_found'] ?? 0 )
 			)

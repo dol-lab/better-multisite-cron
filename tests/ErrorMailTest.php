@@ -33,7 +33,7 @@ final class ErrorMailTest extends TestCase {
 		Error_Mail::maybe_send( $this->record( array( 'error_count' => 3 ) ), $this->config() );
 
 		$this->assertStringContainsString(
-			'Jobs failed or were skipped in 3 of 3867 Spaces.',
+			'Jobs failed or were skipped in 3 of 3867 blogs.',
 			$GLOBALS['bmsc_test_mails'][0]['message']
 		);
 	}
@@ -43,13 +43,13 @@ final class ErrorMailTest extends TestCase {
 	 * mail is the one place that must not carry it.
 	 */
 	public function test_the_message_itself_never_leaves_the_server(): void {
-		$run = $this->record( array( 'error' => 'Failed for user erika.musterfrau@example.org on /secret-space/' ) );
+		$run = $this->record( array( 'error' => 'Failed for user erika.musterfrau@example.org on /secret-blog/' ) );
 
 		Error_Mail::maybe_send( $run, $this->config() );
 		$mail = $GLOBALS['bmsc_test_mails'][0];
 
 		$this->assertStringNotContainsString( 'erika.musterfrau', $mail['message'] . $mail['subject'] );
-		$this->assertStringNotContainsString( 'secret-space', $mail['message'] . $mail['subject'] );
+		$this->assertStringNotContainsString( 'secret-blog', $mail['message'] . $mail['subject'] );
 		$this->assertStringContainsString( 'The run stopped with an error.', $mail['message'] );
 	}
 
@@ -83,11 +83,11 @@ final class ErrorMailTest extends TestCase {
 	 * The subject has to say which cron on which install, before anyone opens the mail.
 	 */
 	public function test_the_subject_names_the_network_and_the_cron(): void {
-		$GLOBALS['bmsc_test_network_options'][1]['site_name'] = 'Spaces';
+		$GLOBALS['bmsc_test_network_options'][1]['site_name'] = 'Example';
 
 		Error_Mail::maybe_send( $this->record( array( 'error' => 'boom' ) ), $this->config() );
 
-		$this->assertSame( '[Spaces] Multisite cron "quick" failed', $GLOBALS['bmsc_test_mails'][0]['subject'] );
+		$this->assertSame( '[Example] Multisite cron "quick" failed', $GLOBALS['bmsc_test_mails'][0]['subject'] );
 	}
 
 	public function test_the_body_spells_out_the_record(): void {

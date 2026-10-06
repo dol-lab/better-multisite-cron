@@ -236,9 +236,7 @@ trait Multisite_Cron_Base {
 		}
 
 		if ( $results['error_count'] ) {
-			$errors = array_filter( $results['blog_tasks'], fn( $a ) => $a['error'] ?? false );
-			$err    = "{$results['error_count']} job(s) failed (or was/were skipped). "
-				. print_r( $this->group_blog_tasks( $errors, true ), true );
+			$err = $this->describe_failures( array_filter( $results['blog_tasks'], fn( $a ) => $a['error'] ?? false ) );
 		}
 
 		$issues = array_filter( $results['blog_tasks'], fn( $a ) => $a['issue'] ?? false );
@@ -247,6 +245,82 @@ trait Multisite_Cron_Base {
 		}
 
 		return $err;
+	}
+
+	/**
+	 * One line per failure: which job, where, and why. The record keeps only
+	 * Run_Log::MAX_ERROR_CHARS characters, so they go to the cause: the command and the job's output
+	 * are left out (the log file has both), identical failures share a line, a reason is cut short.
+	 *
+	 * @param array $tasks Blog tasks with an error.
+	 * @return string
+	 */
+	protected function describe_failures( array $tasks ): string {
+		$groups = array();
+		foreach ( $tasks as $task ) {
+			$jobs   = $this->unfinished_jobs( $task );
+			$reason = $this->failure_reason( (string) $task['error'] );
+			$key    = "$jobs\n$reason";
+
+			$groups[ $key ]['jobs']       = $jobs;
+			$groups[ $key ]['reason']     = $reason;
+			$groups[ $key ]['site_url']   = $groups[ $key ]['site_url'] ?? ( $task['site_url'] ?? '' );
+			$groups[ $key ]['blog_ids'][] = $task['blog_id'];
+		}
+
+		$lines = array( sprintf( 'Jobs failed or were skipped in %d blog%s:', count( $tasks ), 1 === count( $tasks ) ? '' : 's' ) );
+		foreach ( $groups as $group ) {
+			$ids     = $group['blog_ids'];
+			$where   = 1 === count( $ids )
+				? ( '' === $group['site_url'] ? "blog {$ids[0]}" : "{$group['site_url']} (blog {$ids[0]})" )
+				: sprintf(
+					'%d blogs (%s%s)',
+					count( $ids ),
+					implode( ', ', array_slice( $ids, 0, 3 ) ),
+					count( $ids ) > 3 ? ', … +' . ( count( $ids ) - 3 ) : ''
+				);
+			$lines[] = '- ' . ( '' === $group['jobs'] ? '' : "{$group['jobs']} in " ) . "$where: {$group['reason']}";
+		}
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * `cron event run --due-now` runs every due job of a blog in one process, so one that dies
+	 * takes the rest with it. The ones it did not report as executed are that one and those after it.
+	 *
+	 * @param array $task A blog task.
+	 * @return string The first unfinished job and how many followed it, empty if none is known.
+	 */
+	private function unfinished_jobs( array $task ): string {
+		preg_match_all( "/^Executed the cron event '([^']+)'/m", (string) ( $task['response'] ?? '' ), $executed );
+		$left = array_values( array_diff( $task['job_names'] ?? array(), $executed[1] ) );
+
+		if ( count( $left ) > 1 ) {
+			return sprintf( '%s (+%d after it)', $left[0], count( $left ) - 1 );
+		}
+		return $left[0] ?? '';
+	}
+
+	/**
+	 * The line of a job's stderr that names the error. PHP prints a fatal twice (log and display)
+	 * with a stack trace in between, and warnings often come first: neither is the reason.
+	 *
+	 * @param string $error What the blog task recorded as its error.
+	 * @return string At most 200 characters.
+	 */
+	private function failure_reason( string $error ): string {
+		if ( 'over_time' === $error ) {
+			return 'skipped, max_seconds was reached';
+		}
+		$lines = preg_grep( '/^(#\d+ |Stack trace:|thrown in )/', array_filter( array_map( 'trim', explode( "\n", $error ) ) ), PREG_GREP_INVERT );
+		$named = preg_grep( '/^(PHP )?(Fatal error|Parse error|Error)\b/i', $lines );
+		$line  = (string) ( $named ? reset( $named ) : end( $lines ) );
+		$line  = preg_replace( '/\s+/', ' ', $line );
+
+		if ( '' === $line ) {
+			return 'failed without an error message';
+		}
+		return mb_strlen( $line ) > 200 ? mb_substr( $line, 0, 199 ) . '…' : $line;
 	}
 
 	private function group_blog_tasks( array $tasks, bool $verbose = false ): array {

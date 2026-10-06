@@ -187,6 +187,85 @@ final class MultisiteCronBaseTest extends TestCase {
 		);
 	}
 
+	/**
+	 * The record keeps MAX_ERROR_CHARS: they have to name the job, the blog and the cause, not
+	 * every due job, the command or the job's output (all of them stay in the log file).
+	 */
+	public function test_a_failure_says_which_job_failed_where_and_why(): void {
+		$message = $this->runner()->describe_for_test(
+			array(
+				array(
+					'blog_id'   => '1234',
+					'over_time' => 0,
+					'job_names' => array( 'wp_version_check', 'do_pings', 'wp_scheduled_delete', 'wp_update_themes' ),
+					'site_url'  => 'https://example.org/creative-coding',
+					'cmd'       => 'cron event run --url=https://example.org/creative-coding --due-now',
+					'response'  => "Executed the cron event 'wp_version_check' in 0.017s.\n",
+					'error'     => "PHP Warning: Undefined array key \"x\" in /srv/a.php on line 3\n"
+						. "PHP Fatal error:  Uncaught TypeError: foo(): Argument #1 must be of type int in /srv/b.php:12\n"
+						. "Stack trace:\n#0 /srv/c.php(4): foo()\n#1 {main}\n  thrown in /srv/b.php on line 12\n"
+						. 'Fatal error: Uncaught TypeError: foo(): Argument #1 must be of type int in /srv/b.php:12',
+				),
+			)
+		);
+
+		$this->assertSame(
+			"Jobs failed or were skipped in 1 blog:\n"
+			. '- do_pings (+2 after it) in https://example.org/creative-coding (blog 1234): PHP Fatal error: Uncaught TypeError: foo(): Argument #1 must be of type int in /srv/b.php:12',
+			$message
+		);
+	}
+
+	/**
+	 * One broken job on many blogs is one line, not one per blog.
+	 */
+	public function test_identical_failures_share_a_line(): void {
+		$task     = fn( $id ) => array(
+			'blog_id'   => $id,
+			'job_names' => array( 'scoped_notify_process_queue' ),
+			'site_url'  => "https://example.org/$id",
+			'error'     => 'Error: Table missing.',
+		);
+		$overtime = fn( $id ) => array(
+			'blog_id'   => $id,
+			'over_time' => 1,
+			'error'     => 'over_time',
+		);
+
+		$message = $this->runner()->describe_for_test(
+			array( $task( '1' ), $task( '2' ), $overtime( '7' ), $overtime( '8' ), $overtime( '9' ), $overtime( '10' ) )
+		);
+
+		$this->assertSame(
+			"Jobs failed or were skipped in 6 blogs:\n"
+			. "- scoped_notify_process_queue in 2 blogs (1, 2): Error: Table missing.\n"
+			. '- 4 blogs (7, 8, 9, … +1): skipped, max_seconds was reached',
+			$message
+		);
+	}
+
+	/**
+	 * A reason is cut, so a second failure still fits into the record.
+	 */
+	public function test_a_long_reason_is_cut(): void {
+		$message = $this->runner()->describe_for_test(
+			array(
+				array(
+					'blog_id' => '1',
+					'error'   => 'Error: ' . str_repeat( 'x', 500 ),
+				),
+				array(
+					'blog_id' => '2',
+					'error'   => '',
+				),
+			)
+		);
+
+		$this->assertLessThan( Run_Log::MAX_ERROR_CHARS, mb_strlen( $message ) );
+		$this->assertStringContainsString( 'x…', $message );
+		$this->assertStringContainsString( '- blog 2: failed without an error message', $message );
+	}
+
 	private function runner(): object {
 		return new class() {
 			use Multisite_Cron_Base;
@@ -207,6 +286,10 @@ final class MultisiteCronBaseTest extends TestCase {
 
 			public function record_for_test(): array {
 				return $this->run;
+			}
+
+			public function describe_for_test( array $tasks ): string {
+				return $this->describe_failures( $tasks );
 			}
 
 			public function die_for_test(): void {

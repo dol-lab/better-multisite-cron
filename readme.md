@@ -82,9 +82,9 @@ history is one mark per day in the same row — hover a mark for that day's coun
 ```
 Cron    Last run                    Result                             Last 7 days
 quick   2026-08-13 14:00 (12m ago)  ✔ Success, jobs in 12 of 3867      ✔ ✔ ✔ ✘ ✔ · ✔
-        took 189 s                  Spaces
+        took 189 s                  blogs
 daily   2026-08-13 00:00 (14h ago)  ✘ Jobs failed or were skipped in   · · ✔ ✔ ✔ ✔ ✘
-        took 10 h                   97 of 200 Spaces.
+        took 10 h                   97 of 200 blogs.
                                     ▸ What it said
 ```
 
@@ -104,25 +104,23 @@ to set up. Aim it somewhere else with `--email_to=ops@example.org`, turn it off 
 `--no-send_error_email`:
 
 ```
-Subject: [Spaces] Multisite cron "quick" failed
+Subject: [Example] Multisite cron "quick" failed
 
 Cron:     quick
-Problem:  Jobs failed or were skipped in 97 of 200 Spaces.
+Problem:  Jobs failed or were skipped in 97 of 200 blogs.
 Started:  2026-08-13 14:00:02
 Finished: 2026-08-13 14:15:11 (909.4 s)
-Spaces:   12 of 3867 ran a job
+Blogs:    12 of 3867 ran a job
 Host:     web01 (pid 4711)
 
-What the run said is not in this mail: it can quote anything the failing job touched. It stays
-on the server, where it takes a login or a shell to read:
-
+Error message:
   https://example.org/wp-admin/network/settings.php#bmsc-runs
   wp multisite-cron status --name=quick --all
   Error log /srv/www/logs/better-cron.log, at the entry around 2026-08-13 14:00:02 Europe/Berlin
 ```
 
 **The mail carries no error message**, only what went wrong (`Run_Log::summary()`: a death, a
-count of failed Spaces, or a run that stopped) and where to read the rest. An error message quotes
+count of failed blogs, or a run that stopped) and where to read the rest. An error message quotes
 whatever the failing job touched — urls, addresses, whatever ended up in an exception — and mail
 travels through servers and sits in inboxes, while the message itself was already behind a
 network-admin login. So it stays there, and the mail links at it.
@@ -152,7 +150,21 @@ add_action(
 ```
 
 `$run['error']` is empty on success, and holds the fatal/OOM message when the shutdown handler had
-to write the record. `Run_Log::summary( $run )` gives you the same thing without quoting the run,
+to write the record. Failed jobs are one line each, job, blog and the line of stderr that names
+the error, with identical failures sharing a line:
+
+```
+Jobs failed or were skipped in 5 blogs:
+- do_pings (+2 after it) in https://example.org/foo (blog 1234): PHP Fatal error: Uncaught TypeError: … in /srv/b.php:12
+- 4 blogs (7, 8, 9, … +1): skipped, max_seconds was reached
+```
+
+A blog's due jobs run in one `wp cron event run --due-now`, so a job that dies takes the ones
+after it along. The job named is the first one that did not report `Executed the cron event`: the
+one that failed, or, if WordPress died while loading, the first one that never started.
+
+The record keeps 500 characters (`Run_Log::MAX_ERROR_CHARS`), so the command and the job's output
+are left out; the error log file has both (`--log_verbose`). `Run_Log::summary( $run )` gives you the same thing without quoting the run,
 for anything that leaves the server. The mail itself hangs on the same hook, so it can be thrown
 out whole:
 

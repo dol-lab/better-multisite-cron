@@ -31,9 +31,6 @@ class Error_Mail {
 	/** @var int Label column of the body, wide enough for the longest label below. */
 	const LABEL_WIDTH = 10;
 
-	/** @var int Prose is wrapped here: this is read in a terminal as often as in a mail client. */
-	const LINE_WIDTH = 78;
-
 	/**
 	 * Mail the run, if it went wrong and somebody asked to hear about it.
 	 *
@@ -89,8 +86,8 @@ class Error_Mail {
 			__( 'Problem', 'bmsc' )  => $summary,
 			__( 'Started', 'bmsc' )  => self::stamp( $run['started'] ?? 0 ),
 			__( 'Finished', 'bmsc' ) => self::stamp( $run['finished'] ?? 0 ) . sprintf( ' (%s s)', $run['duration_seconds'] ?? 0 ),
-			__( 'Spaces', 'bmsc' )   => sprintf(
-				/* translators: 1: Spaces which ran a job, 2: Spaces looked at. */
+			__( 'Blogs', 'bmsc' )    => sprintf(
+				/* translators: 1: blogs which ran a job, 2: blogs looked at. */
 				__( '%1$d of %2$d ran a job', 'bmsc' ),
 				(int) ( $run['blogs_processed'] ?? 0 ),
 				(int) ( $run['blogs_found'] ?? 0 )
@@ -110,7 +107,7 @@ class Error_Mail {
 	}
 
 	/**
-	 * The places that have what this mail leaves out, and why it leaves it out.
+	 * The places that have the error message this mail leaves out.
 	 *
 	 * @param array $run    The finished record.
 	 * @param array $config The parsed arguments.
@@ -135,9 +132,7 @@ class Error_Mail {
 			);
 		}
 
-		// The sentence is wrapped, the places are not: a broken url is a url nobody can click.
-		return wordwrap( __( 'What the run said is not in this mail: it can quote anything the failing job touched. It stays on the server, where it takes a login or a shell to read:', 'bmsc' ), self::LINE_WIDTH )
-			. "\n\n  " . implode( "\n  ", $places ) . "\n";
+		return __( 'Error message:', 'bmsc' ) . "\n  " . implode( "\n  ", $places ) . "\n";
 	}
 
 	/**
