@@ -10,6 +10,9 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 
 	use Multisite_Cron_Base;
 
+	/** @var bool Whether this run said that jobs cannot be stopped here. */
+	private $warned_unstoppable = false;
+
 	/** @var string[] Columns of `wp multisite-cron status`. */
 	const FIELDS = array( 'name', 'started', 'finished', 'duration_seconds', 'blogs_processed', 'error_count', 'problem' );
 
@@ -53,6 +56,81 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 			WP_CLI::halt( 1 );
 		}
 		WP_CLI::success( count( $runs ) . ' run(s), no problems.' );
+	}
+
+	/**
+	 * Check that this server can run `wp multisite-cron run`. Run it as the user cron runs as.
+	 *
+	 * Starts a job and stops one that is over time, as a run does. Exits with code 1 if anything is
+	 * missing.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--log_file=<path>]
+	 * : Also check that this file (--log_errors_to_file, --log_success_to_file) can be written.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     sudo -u www-data wp multisite-cron check --log_file=/srv/www/logs/better-cron.log
+	 *
+	 * @param array $positional_args Unused.
+	 * @param array $assoc_args      See OPTIONS.
+	 * @return void
+	 */
+	public function check( $positional_args, $assoc_args ) {
+		$checks = array(
+			'Multisite' => is_multisite()
+				? array( 'status' => 'ok' )
+				: array(
+					'status' => 'error',
+					'detail' => 'This only works on multisite.',
+				),
+		) + Process::check( WP_CLI\Utils\get_php_binary() );
+
+		if ( ! empty( $assoc_args['log_file'] ) ) {
+			$problem            = $this->log_file_problem( (string) $assoc_args['log_file'] );
+			$checks['Log file'] = array(
+				'status' => '' === $problem ? 'ok' : 'error',
+				'detail' => $problem,
+			);
+		}
+
+		$rows = array();
+		foreach ( $checks as $check => $row ) {
+			$rows[] = array( 'check' => $check ) + $row + array( 'detail' => '' );
+		}
+		WP_CLI\Utils\format_items( 'table', $rows, array( 'check', 'status', 'detail' ) );
+
+		$count = array_count_values( array_column( $rows, 'status' ) );
+		if ( ! empty( $count['error'] ) ) {
+			WP_CLI::error( "{$count['error']} check(s) failed." );
+		}
+		WP_CLI::success( empty( $count['warning'] ) ? 'This server can run multisite-cron.' : 'This server can run multisite-cron, with the warnings above.' );
+	}
+
+	/**
+	 * @param string $file Absolute path.
+	 * @return string Empty if it can be written.
+	 */
+	private function log_file_problem( string $file ): string {
+		if ( file_exists( $file ) ) {
+			return is_writable( $file ) ? '' : "Not writable for this user: $file"; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_is_writable -- a log file, not the site's file system.
+		}
+		return is_writable( dirname( $file ) ) ? '' : 'Cannot be created, the directory is not writable for this user: ' . dirname( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_is_writable -- see above.
+	}
+
+	/**
+	 * Said once per run, in the CLI only: it is about this server, not about a job.
+	 *
+	 * @param array $args The parsed arguments.
+	 * @return void
+	 */
+	private function warn_if_unstoppable( array $args ) {
+		if ( $this->warned_unstoppable || ! $args['max_seconds'] || Process::can_stop() ) {
+			return;
+		}
+		$this->warned_unstoppable = true;
+		WP_CLI::warning( 'proc_get_status() or proc_terminate() is disabled: jobs run without max_seconds. See `wp multisite-cron check`.' );
 	}
 
 	/**
@@ -120,6 +198,7 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 
 		$this->log( 'notice', "Running command: {$result['cmd']}" );
 
+		$this->warn_if_unstoppable( $args );
 		$run = Process::run( $this->command_line( $result['cmd'] ), (float) $args['max_seconds'] ); // not WP_CLI::runcommand(), see Process.
 		// the the return code is 0, there was no error and stderr is is not an error (but an issue).
 		$error_or_issue            = 0 === $run->return_code ? 'issue' : 'error';

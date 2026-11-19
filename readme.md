@@ -50,6 +50,16 @@ Why the entries look like that:
   if the long daily run is meant to keep going while the short one fires.
 - **`--name`** keeps the runs apart in `wp multisite-cron status`.
 
+## Can this server run it? (`wp multisite-cron check`)
+
+Run it as the user cron runs as, with the log file of your crontab entry:
+
+```sh
+sudo -u www-data wp multisite-cron check --log_file=/srv/www/logs/better-cron.log
+```
+
+It starts a job and stops one that is over time, as a run does. Each check is `ok`, `warning` (runs work, with less) or `error` (runs fail); it exits with **1** on an error. A run needs `proc_open()`, `proc_close()`, `stream_select()` (not in `disable_functions` of the CLI PHP) and `mbstring`. Without `proc_get_status()` or `proc_terminate()`, jobs run without `--max_seconds`, so a hanging one hangs the run: the check warns, and each such run says so once on the CLI (not in a log file or the record, so `--quiet` hides it).
+
 ## Did it run? (`wp multisite-cron status`)
 
 Every run is recorded in the network-option `bmsc_runs`, grouped by `--name` and kept for 7 days
@@ -199,7 +209,7 @@ remove_action( 'better_multisite_cron_finished', 'Better_Multisite_Cron\send_err
 
 Blog tasks are grouped: blogs with identical state (same `job_names`, `over_time`, etc.) are merged into a single entry with a `blog_ids` array. This keeps logs compact on large multisites.
 
-A blog's `response` (stdout) and `error`/`issue` (stderr) keep at most 64 KB each (`Process::MAX_OUTPUT_BYTES`): the start and the end, with `… [N bytes cut] …` between. Jobs run through `Process`, not `WP_CLI::runcommand()`: that one reads stdout to the end before stderr, so a job writing more than 64 KB to stderr hangs the run for good. A blog's jobs still running after `max_seconds` get SIGTERM, then SIGKILL (after at most 5 s), and fail with `Killed: still running after Xs (max_seconds).`: `set_time_limit()` would not stop them, it counts CPU time and a job waiting on the network uses none. WordPress unschedules a single event before running it, so a killed one is gone, like one that died of a fatal.
+A blog's `response` (stdout) and `error`/`issue` (stderr) keep at most 64 KB each (`Process::MAX_OUTPUT_BYTES`): the start and the end, with `… [N bytes cut] …` between. Jobs run through `Process`, not `WP_CLI::runcommand()`: that one reads stdout to the end before stderr, so a job writing more than 64 KB to stderr hangs the run for good. `Process` reads both pipes as data arrives and ends with the job's exit, not with its output, which a process it left behind can hold open. A blog's jobs still running after `max_seconds` get SIGTERM, then SIGKILL (after at most 5 s), and fail with `Killed: still running after Xs (max_seconds).`: `set_time_limit()` would not stop them, it counts CPU time and a job waiting on the network uses none. WordPress unschedules a single event before running it, so a killed one is gone, like one that died of a fatal.
 
 **Default** (compact) — no `args`/`query_all_blogs`, no per-blog `cmd`/`response`/`site_url`/`issue`:
 

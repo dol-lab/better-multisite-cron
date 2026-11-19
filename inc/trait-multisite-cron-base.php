@@ -16,7 +16,7 @@ trait Multisite_Cron_Base {
 	/**
 	 *
 	 * Overwrite the function in your class!
-	 * (Everything but run() and status() is protected, so WP-CLI does not turn it into a subcommand.)
+	 * (Everything but the subcommands run(), status() and check() is protected, so WP-CLI does not turn it into one.)
 	 *
 	 * @param array $result
 	 * @param array $args
