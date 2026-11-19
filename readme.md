@@ -187,7 +187,7 @@ remove_action( 'better_multisite_cron_finished', 'Better_Multisite_Cron\send_err
 | `log_success_to_file` | `''` | Absolute path to success log file. |
 | `log_verbose` | `false` | Include `args`, `query` and per-blog `cmd`/`response` in log files. |
 | `log_max_size` | `20971520` (20 MB) | Max log file size in bytes before erroring. |
-| `max_seconds` | `0` | Stop starting new blogs after X seconds. `0` = no limit. |
+| `max_seconds` | `0` | Stop starting new blogs after X seconds, and kill a blog's jobs still running after X seconds (wall clock, so a run can take up to twice as long). `0` = no limit, and a hanging job hangs the run. |
 | `name` | `'default'` | Name of this run in `wp multisite-cron status`. Give each crontab entry its own. |
 | `order_by` | `'last_updated DESC, blog_id ASC'` | SQL ORDER BY for blog processing order. |
 | `overtime_is_error` | `false` | Treat overtime as an error (exit code 1, recorded as a problem). |
@@ -198,6 +198,8 @@ remove_action( 'better_multisite_cron_finished', 'Better_Multisite_Cron\send_err
 ## Log output
 
 Blog tasks are grouped: blogs with identical state (same `job_names`, `over_time`, etc.) are merged into a single entry with a `blog_ids` array. This keeps logs compact on large multisites.
+
+A blog's `response` (stdout) and `error`/`issue` (stderr) keep at most 64 KB each (`Process::MAX_OUTPUT_BYTES`): the start and the end, with `… [N bytes cut] …` between. Jobs run through `Process`, not `WP_CLI::runcommand()`: that one reads stdout to the end before stderr, so a job writing more than 64 KB to stderr hangs the run for good. A blog's jobs still running after `max_seconds` get SIGTERM, then SIGKILL (after at most 5 s), and fail with `Killed: still running after Xs (max_seconds).`: `set_time_limit()` would not stop them, it counts CPU time and a job waiting on the network uses none. WordPress unschedules a single event before running it, so a killed one is gone, like one that died of a fatal.
 
 **Default** (compact) — no `args`/`query_all_blogs`, no per-blog `cmd`/`response`/`site_url`/`issue`:
 

@@ -101,3 +101,4 @@ function _n( $single, $plural, $number, $domain = 'default' ) {
 require_once dirname( __DIR__ ) . '/inc/trait-multisite-cron-base.php';
 require_once dirname( __DIR__ ) . '/inc/class-network-settings.php';
 require_once dirname( __DIR__ ) . '/inc/class-error-mail.php';
+require_once dirname( __DIR__ ) . '/inc/class-process.php';

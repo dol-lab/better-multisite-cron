@@ -4,6 +4,7 @@ namespace Better_Multisite_Cron;
 use WP_CLI;
 
 require_once __DIR__ . '/trait-multisite-cron-base.php';
+require_once __DIR__ . '/class-process.php';
 
 class Multisite_Cron_Cli extends \WP_CLI_Command {
 
@@ -115,26 +116,36 @@ class Multisite_Cron_Cli extends \WP_CLI_Command {
 			ARRAY_FILTER_USE_KEY
 		);
 
-		// add time limit. each command can not run longer than max_seconds.
-		$flags[] = $args['max_seconds'] ? "--exec='set_time_limit( {$args['max_seconds']} );'" : '';
-
 		$result['cmd'] = "cron event run --url={$result['site_url']} --due-now " . implode( ' ', $flags );
 
 		$this->log( 'notice', "Running command: {$result['cmd']}" );
 
-		$run = WP_CLI::runcommand(
-			$result['cmd'],
-			array(
-				'return'     => 'all',
-				'exit_error' => false,
-				'launch'     => true,
-			)
-		);
+		$run = Process::run( $this->command_line( $result['cmd'] ), (float) $args['max_seconds'] ); // not WP_CLI::runcommand(), see Process.
 		// the the return code is 0, there was no error and stderr is is not an error (but an issue).
 		$error_or_issue            = 0 === $run->return_code ? 'issue' : 'error';
 		$result['response']        = $run->stdout;
 		$result[ $error_or_issue ] = $run->stderr;
 		return $result;
+	}
+
+	/**
+	 * The command line WP_CLI::runcommand() would build: this PHP, this wp, and the global arguments this
+	 * run got (--path, --quiet, ...), except those the command sets itself.
+	 *
+	 * @param string $command WP-CLI command, without `wp`.
+	 * @return string
+	 */
+	private function command_line( string $command ): string {
+		list( , , $runtime ) = WP_CLI::get_configurator()->parse_args( array_slice( $GLOBALS['argv'], 1 ) );
+		foreach ( array_keys( $runtime ) as $key ) {
+			if ( preg_match( '/(^|\s)--' . preg_quote( $key, '/' ) . '(=|\s|$)/', $command ) ) {
+				unset( $runtime[ $key ] );
+			}
+		}
+		return implode(
+			' ',
+			array( escapeshellarg( WP_CLI\Utils\get_php_binary() ), escapeshellarg( $GLOBALS['argv'][0] ), WP_CLI\Utils\assoc_args_to_str( $runtime ), $command )
+		);
 	}
 
 	protected function log( string $type, string $string ) {
